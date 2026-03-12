@@ -7,27 +7,26 @@ class ScraperAgent:
     """
     Phase 2 Agent: Responsible for executing search queries 
     and extracting clean text content from web pages.
+    Optimized for Deep Research (parses up to 12 sources concurrently).
     """
     
     def __init__(self):
-        # We use DDGS as it's free, fast, and doesn't require API keys
         self.ddgs = DDGS()
 
-    async def get_urls(self, queries: List[str], max_results: int = 2) -> List[str]:
+    # УВЕЛИЧИЛИ max_results до 3, чтобы собирать больше ссылок на каждый запрос
+    async def get_urls(self, queries: List[str], max_results: int = 3) -> List[str]:
         """
         Executes a list of search queries and returns a deduplicated list of URLs.
         """
         urls = []
         for query in queries:
             try:
-                # Running the search
-                results = self.ddgs.text(query, max_results=max_results)
+                results = await asyncio.to_thread(self.ddgs.text, query, max_results=max_results)
                 if results:
                     urls.extend([r['href'] for r in results])
             except Exception as e:
                 print(f"Error searching for '{query}': {e}")
         
-        # Return unique URLs only
         return list(set(urls))
 
     async def scrape_page(self, url: str) -> Dict[str, str]:
@@ -35,39 +34,59 @@ class ScraperAgent:
         Downloads a page and extracts clean content.
         """
         try:
-            # fetch_url downloads the HTML
-            downloaded = fetch_url(url)
+            downloaded = await asyncio.to_thread(fetch_url, url)
             if downloaded:
-                # extract() converts HTML to clean Markdown-like text
-                content = extract(downloaded, include_comments=False, include_tables=True)
+                content = await asyncio.to_thread(extract, downloaded, include_comments=False, include_tables=True)
                 if content:
-                    return {"url": url, "content": content[:5000]} # Limit text length per page
+                    return {"url": url, "content": content[:6000]} 
         except Exception as e:
             print(f"Error scraping {url}: {e}")
         return None
 
-    async def run(self, search_plan: Dict[str, List[str]]) -> List[Dict[str, str]]:
+    async def run_stream(self, search_plan: Dict[str, List[str]]):
         """
-        The main workflow:
-        1. Flatten all queries from the plan (official, pro, community).
-        2. Get all URLs.
-        3. Scrape and return the data.
+        Streaming execution loop. Yields progress events back to the main API.
         """
         all_queries = []
         for category in search_plan.values():
-            all_queries.extend(category)
+            if isinstance(category, list):
+                all_queries.extend(category)
 
-        # Step 1: Get URLs
-        print(f"[*] Executing {len(all_queries)} search queries...")
+        yield {"status": "searching", "message": f"Выполняю глубокий поиск по {len(all_queries)} запросам..."}
+        
         urls = await self.get_urls(all_queries)
         
         if not urls:
-            return []
+            yield {"status": "done", "data": []}
+            return
 
-        # Step 2: Scrape content concurrently to be fast
-        print(f"[*] Found {len(urls)} links. Starting extraction...")
-        tasks = [self.scrape_page(url) for url in urls[:6]] # Limit to top 6 sources for speed/tokens
-        results = await asyncio.gather(*tasks)
+        # УВЕЛИЧИЛИ ЛИМИТ ДО 12 ССЫЛОК (10+-)
+        urls_to_scrape = urls[:12] 
         
-        # Return only successful results
-        return [r for r in results if r is not None]
+        yield {
+            "status": "links_found", 
+            "message": f"Найдена база из {len(urls)} ссылок. Начинаю чтение {len(urls_to_scrape)} лучших источников..."
+        }
+
+        results = []
+        tasks = [self.scrape_page(url) for url in urls_to_scrape]
+        
+        completed_count = 0
+        
+        for task in asyncio.as_completed(tasks):
+            res = await task
+            completed_count += 1
+            
+            if res:
+                results.append(res)
+                yield {
+                    "status": "reading", 
+                    "message": f"[{completed_count}/{len(urls_to_scrape)}] Успешно прочитано: {res['url'][:50]}..."
+                }
+            else:
+                yield {
+                    "status": "reading_error", 
+                    "message": f"[{completed_count}/{len(urls_to_scrape)}] Заблокирован доступ к сайту."
+                }
+
+        yield {"status": "done", "data": results}
