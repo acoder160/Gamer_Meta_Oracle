@@ -21,3 +21,9 @@ class RouterResponse(BaseModel):
     intent_type: str = Field(description="Category of intent (e.g., 'build', 'macro', 'technical')")
     context: GameContext
     search_plan: SearchPlan
+
+class FinalSynthesis(BaseModel):
+    """The final structured output containing the guide and metadata."""
+    verified_version: str = Field(description="The actual game patch/version found in the text (e.g., '17.0' or 'Unknown')")
+    confidence_score: int = Field(description="Score from 0 to 100 based on the quality and relevance of the scraped sources")
+    markdown_guide: str = Field(description="A beautifully formatted Markdown guide answering the user's query")
