@@ -24,6 +24,7 @@ class RouterResponse(BaseModel):
 
 class FinalSynthesis(BaseModel):
     """The final structured output containing the guide and metadata."""
-    verified_version: str = Field(description="The actual game patch/version found in the text (e.g., '17.0' or 'Unknown')")
+    verified_version: str = Field(description="The actual current game patch/version found in the text (e.g., '17.0' or 'Unknown')")
+    previous_version: str = Field(description="The previous game patch/version if mentioned or inferred (e.g., '16.0' or 'Unknown')")
     confidence_score: int = Field(description="Score from 0 to 100 based on the quality and relevance of the scraped sources")
-    markdown_guide: str = Field(description="A beautifully formatted Markdown guide answering the user's query")
+    markdown_guide: str = Field(description="A formatted Markdown guide answering the user's query, split 20% past changes and 80% current meta.")

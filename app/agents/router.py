@@ -5,44 +5,46 @@ from groq import Groq
 from app.api.schemas import RouterResponse
 
 class RouterAgent:
-    """
-    Phase 1 Agent: Responsible for analyzing game origin and 
-    generating a multi-layered search strategy without hallucinations.
-    """
-    
     def __init__(self, model: str = "llama-3.1-8b-instant"):
-        # We assume GROQ_API_KEY is already in the environment
         self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
         self.model = model
 
     def generate_search_plan(self, user_query: str) -> RouterResponse:
-        """
-        Generates a search plan based on the user's query using zero-knowledge 
-        logic to avoid version hallucinations.
-        """
-        # Get the technical schema to guide the LLM's output structure
         schema_json = RouterResponse.model_json_schema()
         current_date = datetime.now().strftime("%Y-%m-%d")
+        current_year = datetime.now().year 
         
         system_prompt = f"""
 You are a Research Architect specializing in Gaming Intelligence. 
-Today's Date: {current_date}.
+Today's Date: {current_date}. Current Year: {current_year}.
 
-STRICT VERSIONING RULES:
-1. You DO NOT know the current patch version for {current_date} unless you have real-time proof.
-2. If you are not 100% certain, you MUST set 'current_version' to "Unknown".
-3. DO NOT hallucinate versions like 'v12.1' or '1.93'. Better to be "Unknown" than wrong.
+CRITICAL RULE: TARGET FOCUS
+If the user asks about a specific character, class, weapon, or strategy, that EXACT SUBJECT MUST be included in EVERY SINGLE search query.
 
-SEARCH QUERY LOGIC:
-- If 'current_version' is "Unknown", your FIRST query in 'official' MUST be to discover the version: 
-  e.g., "latest patch version [Game Name] {current_date}"
-- NEVER include old versions (like 'v12.1') in queries if the current state is "Unknown".
-- Use terms like "latest", "actual meta", or "current update" instead.
+CRITICAL RULE: CIS SLANG TRANSLATION
+Sometimes gamers use heavy using slang and abbreviations. You MUST translate slang to the OFFICIAL GLOBAL GAME NAME before generating search queries. 
+Examples of common CIS slang:
+- "мобла", "млбб", "мл" -> "Mobile Legends: Bang Bang"
+- "алоды", "алодах", "аллоды" -> "Аллоды Онлайн" (Allods Online)
+- "дока", "дота", "дотка" -> "Dota 2"
+- "кс", "ксго", "контра" -> "Counter-Strike 2"
+- "вов", "wow", "вовка" -> "World of Warcraft"
+- "лига", "лол", "lol" -> "League of Legends"
+- "пабг", "пубг" -> "PUBG: Battlegrounds"
+- "тарков", "ефт" -> "Escape from Tarkov"
 
-SOURCE LOGIC:
-- OFFICIAL: Developer blogs and technical update logs.
-- PRO_STATISTICS: Dedicated analytic engines and high-level stat trackers.
-- HIGH_TIER_COMMUNITY: Native language forums of the developers AND global hubs.
+If the user writes "билд на эстеса в мобле", your queries MUST use "Mobile Legends Estes...", NOT "мобла Estes...".
+
+SEARCH QUERY LOGIC (80/20 ENGLISH STRATEGY):
+You MUST generate EXACTLY 5 queries to get the most hardcore, technical data:
+1. 80% ENGLISH QUERIES (Generate 4 queries in English):
+   - Query 1: Find hardcore math and stats (e.g., "[Subject] build exact stats math multipliers {current_year}").
+   - Query 2: Find the latest English patch notes (e.g., "[Subject] patch notes nerfs buffs {current_year}").
+   - Query 3: Find pro/global meta tier list (e.g., "[Subject] global pro build {current_year}").
+   - Query 4: Find exact item names and skill mechanics (e.g., "[Subject] wiki skills items {current_year}").
+2. 20% LOCAL QUERY (Generate 1 query in the USER'S LANGUAGE):
+   - To capture local community tips (e.g., "Гайд [Subject] {current_year} советы").
+3. ANTI-SEO: Use negative keywords in DDG: e.g., "-2022 -2023 -2024".
 
 OUTPUT FORMAT:
 - Output ONLY valid JSON matching this schema:
@@ -59,18 +61,4 @@ OUTPUT FORMAT:
             temperature=0.1
         )
         
-        # Validate the response against our Pydantic model
-        raw_content = completion.choices[0].message.content
-        return RouterResponse.model_validate_json(raw_content)
-
-# Testing block for local development
-if __name__ == "__main__":
-    from dotenv import load_dotenv
-    load_dotenv()
-    
-    agent = RouterAgent()
-    try:
-        test_plan = agent.generate_search_plan("Билд на друида в Аллодах Онлайн")
-        print(test_plan.model_dump_json(indent=2))
-    except Exception as e:
-        print(f"Error: {e}")
+        return RouterResponse.model_validate_json(completion.choices[0].message.content)

@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 from typing import List, Dict
 from ddgs import DDGS
 from trafilatura import fetch_url, extract
@@ -15,15 +16,22 @@ class ScraperAgent:
 
     # УВЕЛИЧИЛИ max_results до 3, чтобы собирать больше ссылок на каждый запрос
     async def get_urls(self, queries: List[str], max_results: int = 3) -> List[str]:
-        """
-        Executes a list of search queries and returns a deduplicated list of URLs.
-        """
         urls = []
+        current_year = datetime.datetime.now().year
+        # Создаем список "запрещенных" старых годов (например: 2024, 2023, 2022, 2021)
+        forbidden_years = [str(current_year - i) for i in range(2, 6)] 
+        
         for query in queries:
             try:
-                results = await asyncio.to_thread(self.ddgs.text, query, max_results=max_results)
+                results = await asyncio.to_thread(self.ddgs.text, query, max_results=max_results, timelimit='y')
                 if results:
-                    urls.extend([r['href'] for r in results])
+                    for r in results:
+                        url = r['href']
+                        # ANTI-SEO FILTER: Если в ссылке есть старый год - выкидываем её!
+                        if any(old_year in url for old_year in forbidden_years):
+                            print(f"[-] Blocked SEO Trap URL: {url}")
+                            continue
+                        urls.append(url)
             except Exception as e:
                 print(f"Error searching for '{query}': {e}")
         
